@@ -1,1 +1,4 @@
-
+KITTI_Selection/
+venv/
+output/
+.idea/
