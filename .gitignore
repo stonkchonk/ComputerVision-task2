@@ -2,3 +2,5 @@ KITTI_Selection/
 venv/
 output/
 .idea/
+yolo11n.pt
+__pycache__/
