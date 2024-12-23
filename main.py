@@ -1,3 +1,4 @@
+import cv2
 import torch
 from loader import DataSet
 from ultralytics import YOLO
@@ -64,26 +65,44 @@ def precision_and_recall(iou_bb_matcher_result: None | tuple[dict, list]) -> tup
     return true_positives / (true_positives + false_positives), true_positives / (true_positives + false_negatives)
 
 
+def draw_and_label_bbs(bbs: list[ObjectLabel], image, color, thickness):
+    for idx, gt_bb in enumerate(bbs):
+        start_point = (int(gt_bb.x_min), int(gt_bb.y_min))
+        end_point = (int(gt_bb.x_max), int(gt_bb.y_max))
+        id_point = (int(gt_bb.x_min + (gt_bb.x_max - gt_bb.x_min)/2), int(gt_bb.y_min) - 7)
+        image = cv2.rectangle(image, start_point, end_point, color, thickness)
+        image = cv2.putText(image, str(idx), id_point, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness, cv2.LINE_AA)
+    return image
+
+
+def bb_drawer(gt_bbs: list[ObjectLabel], detected_bbs_tensor, image):
+    red = (0, 0, 255)
+    green = (0, 255, 0)
+    thickness = 1
+    # draw ground truths
+    image = draw_and_label_bbs(gt_bbs, image, red, thickness)
+    # draw detections
+    image = draw_and_label_bbs(ObjectLabel.parse_list_from_xyxy_tensor(detected_bbs_tensor), image, green, thickness)
+    return image
+
+
 
 data_set = DataSet.load_from_directory('KITTI_Selection')
 model = YOLO("yolo11n.pt")
 
 
 for labeled_image in data_set.labeled_images:
-    ground_truth_labels = labeled_image.object_labels
-    ground_truth_bbs = []
-    for gtl in ground_truth_labels:
-        ground_truth_bbs.append([gtl.x_min, gtl.y_min, gtl.x_max, gtl.y_max])
-    ground_truth_bbs_tensor = Tensor(ground_truth_bbs)
-    print(labeled_image.name)
     predicted_result = (model.predict(labeled_image.image_data, classes=[2]))[0]  # filter for cars (class 2)
-
-    matching_result = iou_bb_matcher(ground_truth_bbs_tensor, predicted_result.boxes.xyxy.data)
+    matching_result = iou_bb_matcher(labeled_image.object_labels_as_tensor, predicted_result.boxes.xyxy.data)
+    print(labeled_image.name)
     print(matching_result)
     precision, recall = precision_and_recall(matching_result)
     print(f'precision {precision}, recall {recall}')
 
     #predicted_result.save("output/o_" + labeled_image.name + ".png")
+    cv2.imwrite("output/o_" + labeled_image.name + ".png", bb_drawer(labeled_image.object_labels,
+                                                                     predicted_result.boxes.xyxy.data,
+                                                                     labeled_image.image_data))
 
 #results = model(data_set.labeled_images[0].image_data)
 #results = model.predict(data_set.labeled_images[0].image_data, classes=[2])
