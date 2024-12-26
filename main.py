@@ -1,10 +1,13 @@
+import math
+
 import cv2
 import torch
 from loader import DataSet
 from ultralytics import YOLO
 from ultralytics.utils.metrics import box_iou
 from torch import Tensor
-from loader import ObjectLabel
+from loader import ObjectLabel, LabeledImage
+import numpy as np
 
 
 def iou_bb_matcher(gt_bbs_tensor, detected_bbs_tensor) -> None | tuple[dict, list]:
@@ -86,6 +89,19 @@ def bb_drawer(gt_bbs: list[ObjectLabel], detected_bbs_tensor, image):
     return image
 
 
+def intersect_calculator(labeled_image_object: LabeledImage):
+    K = labeled_image_object.intrinsic_matrix
+    t = np.array([0, -1.65, 0])
+    K_inv = np.linalg.inv(K)
+    n = np.array([0, 1, 0])
+    for object_label in labeled_image_object.object_labels:
+        pixel_position = np.array([(object_label.x_max + object_label.x_min) / 2, object_label.y_max, 1])
+        x = -np.dot(n, t) / np.dot(n, np.matmul(K_inv, pixel_position))
+        world_position = x * np.matmul(K_inv, pixel_position) - t
+        dist = math.sqrt(world_position[0]**2 + world_position[2]**2)
+        print(f'calculated {dist} , actual {object_label.distance}')
+
+
 
 data_set = DataSet.load_from_directory('KITTI_Selection')
 model = YOLO("yolo11n.pt")
@@ -96,6 +112,7 @@ for labeled_image in data_set.labeled_images:
     matching_result = iou_bb_matcher(labeled_image.object_labels_as_tensor, predicted_result.boxes.xyxy.data)
     print(labeled_image.name)
     print(matching_result)
+    intersect_calculator(labeled_image)
     precision, recall = precision_and_recall(matching_result)
     print(f'precision {precision}, recall {recall}')
 
