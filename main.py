@@ -6,8 +6,9 @@ from loader import DataSet
 from ultralytics import YOLO
 from ultralytics.utils.metrics import box_iou
 from torch import Tensor
-from loader import ObjectLabel, LabeledImage
+from loader import ObjectLabel
 import numpy as np
+from matplotlib import pyplot as plt
 
 
 
@@ -95,19 +96,6 @@ def bb_drawer(gt_bbs: list[ObjectLabel], detected_bbs_tensor, image):
                                image, red, thickness, True)
     return image
 
-'''
-def intersect_calculator(labeled_image_object: LabeledImage):
-    K = labeled_image_object.intrinsic_matrix
-    t = np.array([0, -1.65, 0])
-    K_inv = np.linalg.inv(K)
-    n = np.array([0, 1, 0])
-    for idx, object_label in enumerate(labeled_image_object.object_labels):
-        pixel_position = np.array([(object_label.x_max + object_label.x_min) / 2, object_label.y_max, 1])
-        x = np.dot(n, t) / np.dot(n, np.matmul(K_inv, pixel_position))
-        world_position = x * np.matmul(K_inv, pixel_position) - t
-        dist = math.sqrt(world_position[0]**2 + world_position[2]**2)
-        print(f'{idx} calculated {dist} , actual {object_label.distance}', world_position)
-'''
 
 def intersect_calculator(intrinsic_matrix, bb_tensor: Tensor) -> float:
     t = np.array([0, -1.65, 0])
@@ -125,6 +113,8 @@ def intersect_calculator(intrinsic_matrix, bb_tensor: Tensor) -> float:
 data_set = DataSet.load_from_directory('KITTI_Selection')
 model = YOLO("yolo11n.pt")
 
+plot_calculated_distances = []
+plot_ground_truth_distances = []
 
 for labeled_image in data_set.labeled_images:
     predicted_result = (model.predict(labeled_image.image_data, classes=[2]))[0]  # filter for cars (class 2)
@@ -138,22 +128,20 @@ for labeled_image in data_set.labeled_images:
                 bb_tensor = match[2]
                 distance = intersect_calculator(labeled_image.intrinsic_matrix, bb_tensor)
                 print(f'gt {idx}, calculated {distance}, actual {labeled_image.object_labels[idx].distance}')
-    #intersect_calculator(labeled_image.intrinsic_matrix, )
+                plot_calculated_distances.append(distance)
+                plot_ground_truth_distances.append(labeled_image.object_labels[idx].distance)
+
     precision, recall = precision_and_recall(matching_result)
     print(f'precision {precision}, recall {recall}')
-
-    #predicted_result.save("output/o_" + labeled_image.name + ".png")
     cv2.imwrite("output/o_" + labeled_image.name + ".png", bb_drawer(labeled_image.object_labels,
                                                                      predicted_result.boxes.xyxy.data,
                                                                      labeled_image.image_data))
 
-#results = model(data_set.labeled_images[0].image_data)
-#results = model.predict(data_set.labeled_images[0].image_data, classes=[2])
-#print(data_set.labeled_images[0].name)
 
-#for result in results:
-#    boxes = result.boxes
-#    masks = result.masks
-#    keypoints = result.keypoints
-#    probs = result.probs
-#    result.show()
+plt.plot([0, 70], [0, 70])
+plt.plot(plot_ground_truth_distances, plot_calculated_distances, 'bo')
+plt.axis((0, 70, 0, 70))
+plt.grid(True)
+plt.xlabel('Distance calculated using camera information')
+plt.ylabel('Distance provided in ground truth')
+plt.savefig('output/plot.png')
