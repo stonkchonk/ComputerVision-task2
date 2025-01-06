@@ -89,6 +89,9 @@ def bb_drawer(gt_bbs: list[ObjectLabel], detected_bbs_tensor, image):
     red = (0, 0, 255)
     green = (0, 255, 0)
     thickness = 1
+    # reduce image data size
+    reduction = 1
+    image = cv2.resize(cv2.resize(image, (0, 0), fx=reduction, fy=reduction), (0, 0), fx=1/reduction, fy=1/reduction)
     # draw ground truths
     image = draw_and_label_bbs(gt_bbs, image, green, thickness, False)
     # draw detections
@@ -114,7 +117,7 @@ def intersect_calculator(intrinsic_matrix, bb_tensor: Tensor) -> float:
 def print_figure_description(name, precision_val, recall_val, num_ground_truths, num_detections):
     print("\\begin{figure}[H]")
     print("\t\\centering")
-    print("\t\\includegraphics[width=1\\columnwidth]{Figures/o_" + name + ".png}")
+    print("\t\\includegraphics[width=1\\columnwidth]{Figures/o_" + name + ".jpg}")
     print("\t\\caption{" + name + f".png, Ground Truths: {num_ground_truths}, Detections: {num_detections}, Precision: {str(round(precision_val, 2))}, Recall: {str(round(recall_val, 2))}" +"}")
     print("\t\\label{o_" + name + "}")
     print("\\end{figure}")
@@ -186,6 +189,7 @@ model = YOLO("yolo11n.pt")
 # generate overview plot
 plot_calculated_distances = []
 plot_ground_truth_distances = []
+show_iou_matrix = False
 for labeled_image in data_set.labeled_images:
     predicted_result = (model.predict(labeled_image.image_data, classes=[2], verbose=False))[0]  # filter for cars (class 2)
     matching_result = iou_bb_matcher(labeled_image.object_labels_as_tensor, predicted_result.boxes.xyxy.data)
@@ -201,17 +205,14 @@ for labeled_image in data_set.labeled_images:
     # print latex results
     precision, recall = precision_and_recall(matching_result)
     print_figure_description(labeled_image.name, precision, recall, len(labeled_image.object_labels), predicted_result.boxes.xyxy.data.size(dim=0))
-    #print("\\begin{tabular}{p{0.45\\textwidth} p{0.45\\textwidth}}")
-    #print_iou_matrix(labeled_image.object_labels_as_tensor, predicted_result.boxes.xyxy.data)
-    #print("&")
+    if show_iou_matrix:
+        print_iou_matrix(labeled_image.object_labels_as_tensor, predicted_result.boxes.xyxy.data)
     print_assigned_unassigned(matching_result)
-    #print("\\\\")
-    #print("\\end{tabular}\\newline")
     print_detection_distances(matching_result, labeled_image.object_labels)
     print("\n")
 
     # generate output image
-    cv2.imwrite("output/o_" + labeled_image.name + ".png", bb_drawer(labeled_image.object_labels,
+    cv2.imwrite("output/o_" + labeled_image.name + ".jpg", bb_drawer(labeled_image.object_labels,
                                                                      predicted_result.boxes.xyxy.data,
                                                                      labeled_image.image_data))
 
